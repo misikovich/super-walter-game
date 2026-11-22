@@ -43,6 +43,19 @@ canvas#gl{display:block;position:fixed;inset:0}
 #center.small{font-size:56px}
 @keyframes pop{from{transform:scale(.4)}to{transform:scale(1)}}
 #flash{position:fixed;inset:0;pointer-events:none;background:radial-gradient(circle,rgba(58,208,255,0) 30%,rgba(58,208,255,.7));opacity:0;transition:opacity .6s;z-index:6}
+#tint{position:fixed;inset:0;pointer-events:none;z-index:40;display:none;mix-blend-mode:multiply;background:radial-gradient(ellipse at center,#fff0a0 30%,#c98214 100%);opacity:.62}
+body.mexico-filter #tint{display:block}
+body.mexico-filter #gl{filter:sepia(.6) saturate(1.8) contrast(1.06)}
+.sec{font-size:13px;letter-spacing:.18em;opacity:.7;margin:4px 2px 8px}
+.maps{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.mapCard{pointer-events:auto;cursor:pointer;text-align:left;font-family:inherit;color:#fff;padding:12px 14px;border-radius:14px;background:rgba(10,14,22,.62);border:2px solid rgba(255,255,255,.12);transition:border-color .15s,transform .15s,box-shadow .15s}
+.mapCard:hover{transform:translateY(-2px)}
+.mapCard.sel{border-color:var(--blue);box-shadow:0 0 0 3px rgba(58,208,255,.25)}
+.mapCard b{font-size:20px;font-weight:400;display:block}
+.mapCard span{font-family:system-ui,sans-serif;font-size:13px;opacity:.75}
+.mapCard .pv{height:54px;border-radius:10px;margin-bottom:10px}
+.pv-desert{background:linear-gradient(180deg,#3a8ad8,#9fd0f5 45%,#f3cfa0 62%,#e2b47c)}
+.pv-mexico{background:linear-gradient(180deg,#b8a040,#f2d27a 45%,#e9c46a 62%,#c98a40);filter:sepia(.4) saturate(1.6)}
 #muteBtn{pointer-events:auto;position:absolute;right:22px;top:112px;width:44px;height:44px;border-radius:12px;font-size:20px;color:#fff;cursor:pointer}
 .screen{position:fixed;inset:0;display:flex;justify-content:center;padding:24px 16px;overflow:auto;background:linear-gradient(180deg,rgba(6,18,38,.62),rgba(40,18,4,.78));z-index:10}
 .wrap{width:min(1120px,100%);margin:auto}
@@ -99,11 +112,15 @@ kbd{font-family:'Russo One',sans-serif;font-size:12px;background:rgba(255,255,25
   <div id="center"></div>
 </div>
 <div id="flash"></div>
+<div id="tint"></div>
 
 <div id="menu" class="screen">
   <div class="wrap">
     <div class="logo">💎 СИНИЙ <b>ДРИФТ</b></div>
     <div class="sub">Пустынное ралли: учитель химии на доме на колёсах против всей округи</div>
+    <div class="sec">КАРТА</div>
+    <div class="maps" id="maps"></div>
+    <div class="sec">ГОНЩИКИ</div>
     <div class="grid" id="roster"></div>
     <div class="info">
       <div class="panel">
@@ -247,7 +264,7 @@ function M(color, o) {
   const key = color + '|' + (o ? JSON.stringify(o) : '');
   return MC[key] || (MC[key] = new THREE.MeshStandardMaterial(Object.assign({color, roughness: 0.7, metalness: 0.05}, o || {})));
 }
-const G = (key, fn) => GC[key] || (GC[key] = fn());
+const G = (key, fn) => GC[key] || (GC[key] = (g => (g.userData.cached = true, g))(fn()));
 function place(m, x, y, z) { m.position.set(x, y, z); m.castShadow = true; m.receiveShadow = true; return m; }
 const box = (w, h, d, c, x = 0, y = 0, z = 0, o) => place(new THREE.Mesh(G(`b${w},${h},${d}`, () => new THREE.BoxGeometry(w, h, d)), M(c, o)), x, y, z);
 const cyl = (rt, rb, h, s, c, x = 0, y = 0, z = 0, o) => place(new THREE.Mesh(G(`c${rt},${rb},${h},${s}`, () => new THREE.CylinderGeometry(rt, rb, h, s)), M(c, o)), x, y, z);
@@ -275,25 +292,53 @@ function textTex(lines, {w = 512, h = 256, bg = '#d8321e', fg = '#fff4d0', accen
 }
 
 // ============================================================
+//  КАРТЫ
+// ============================================================
+const MAPS = {
+  desert: {
+    name: 'Пустыня', desc: 'Каньоны, кактусы и закусочная у дороги',
+    cp: [[0,0],[120,-10],[220,30],[260,120],[220,200],[140,210],[90,160],[30,190],[-40,260],[-140,250],[-200,170],[-180,80],[-230,0],[-200,-90],[-110,-110],[-40,-60]], scale: 1.4,
+    fog: 0xf3cfa0, skyTop: 0x2f7fd6, skyMid: 0x9fd0f5, sun: 0xfff1d6, hemi: [0xcfe8ff, 0xc99a60],
+    sand: '#e2b47c', mesa: [0xbd6a3e, 0xd98d58], wall: ['#e33b2a', '#f4f1ea'],
+    banner: [0x0b5fa8, '#0b5fa8', '#3ad0ff', 'СТАРТ • ФИНИШ'], filter: false, seed: 20241,
+  },
+  mexico: {
+    name: 'Мексика', desc: 'Пыльная деревня, кантина, папель-пикадо и тот самый жёлтый фильтр',
+    cp: [[0,0],[150,0],[230,-40],[310,0],[300,110],[210,140],[170,220],[230,300],[160,370],[40,350],[-20,270],[-120,290],[-210,230],[-230,130],[-180,40],[-110,-40],[-40,-40]], scale: 1.32,
+    fog: 0xe9c46a, skyTop: 0x5f94c0, skyMid: 0xf2dc96, sun: 0xffe0a0, hemi: [0xfff0c0, 0xc98a40],
+    sand: '#d9a35f', mesa: [0xc9783a, 0xe0a060], wall: ['#1f8a3e', '#f4f1ea', '#d8261c'],
+    banner: [0x1f7a3a, '#1f7a3a', '#ffd23a', 'SALIDA • META'], filter: true, seed: 777,
+  },
+};
+let MAP = MAPS.desert, mapId = 'desert';
+
+// ============================================================
 //  ТРАССА
 // ============================================================
-const CP = [[0,0],[120,-10],[220,30],[260,120],[220,200],[140,210],[90,160],[30,190],[-40,260],[-140,250],[-200,170],[-180,80],[-230,0],[-200,-90],[-110,-110],[-40,-60]]
-  .map(([x, z]) => new THREE.Vector3(x * 1.4, 0, z * 1.4));
-const curve = new THREE.CatmullRomCurve3(CP, true, 'centripetal');
-const P = curve.getSpacedPoints(N); P.length = N;
-const T = [], NR = [], TH = [], DIST = [];
-let TOTAL = 0;
-for (let i = 0; i < N; i++) {
-  const a = P[(i - 1 + N) % N], b = P[(i + 1) % N];
-  const t = new THREE.Vector3().subVectors(b, a).normalize();
-  T.push(t);
-  NR.push(new THREE.Vector3(-t.z, 0, t.x));   // «вправо» относительно движения
-  TH.push(Math.atan2(t.x, t.z));
-  DIST.push(TOTAL);
-  TOTAL += P[i].distanceTo(P[(i + 1) % N]);
+let P = [], T = [], NR = [], TH = [], DIST = [], KAPPA = [], TOTAL = 0, SPACING = 1;
+let AREA = {x0: -620, x1: 680, z0: -460, z1: 680};
+let world = null, boxes = [], tumbleweeds = [];
+
+function computeTrack(map) {
+  const cp = map.cp.map(([x, z]) => new THREE.Vector3(x * map.scale, 0, z * map.scale));
+  const curve = new THREE.CatmullRomCurve3(cp, true, 'centripetal');
+  P = curve.getSpacedPoints(N); P.length = N;
+  T = []; NR = []; TH = []; DIST = []; TOTAL = 0;
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let i = 0; i < N; i++) {
+    const a = P[(i - 1 + N) % N], b = P[(i + 1) % N];
+    const t = new THREE.Vector3().subVectors(b, a).normalize();
+    T.push(t);
+    NR.push(new THREE.Vector3(-t.z, 0, t.x));   // «вправо» относительно движения
+    TH.push(Math.atan2(t.x, t.z));
+    DIST.push(TOTAL);
+    TOTAL += P[i].distanceTo(P[(i + 1) % N]);
+    x0 = Math.min(x0, P[i].x); x1 = Math.max(x1, P[i].x); z0 = Math.min(z0, P[i].z); z1 = Math.max(z1, P[i].z);
+  }
+  SPACING = TOTAL / N;
+  KAPPA = TH.map((_, i) => Math.abs(wrapA(TH[(i + 8) % N] - TH[(i - 8 + N) % N])) / (16 * SPACING));
+  AREA = {x0: x0 - 260, x1: x1 + 260, z0: z0 - 260, z1: z1 + 260};
 }
-const SPACING = TOTAL / N;
-const KAPPA = TH.map((_, i) => Math.abs(wrapA(TH[(i + 8) % N] - TH[(i - 8 + N) % N])) / (16 * SPACING));
 
 function ribbon(a, b, y0, y1, vScale, mat, vertical) {
   const pos = [], uv = [], idx = [];
@@ -308,7 +353,7 @@ function ribbon(a, b, y0, y1, vScale, mat, vertical) {
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
   geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
   geo.setIndex(idx); geo.computeVertexNormals();
-  const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; scene.add(m);
+  const m = new THREE.Mesh(geo, mat); m.receiveShadow = true; world.add(m);
   return m;
 }
 
@@ -320,37 +365,40 @@ const roadTex = canvasTex(256, 256, (g, w, h) => {
 });
 roadTex.wrapS = THREE.ClampToEdgeWrapping;
 const curbTex = canvasTex(32, 64, (g, w, h) => { g.fillStyle = '#d82a22'; g.fillRect(0, 0, w, h / 2); g.fillStyle = '#f5f5f5'; g.fillRect(0, h / 2, w, h / 2); });
-const wallTex = canvasTex(64, 64, (g, w, h) => {
-  g.fillStyle = '#e33b2a'; g.fillRect(0, 0, w, h / 2); g.fillStyle = '#f4f1ea'; g.fillRect(0, h / 2, w, h / 2);
-  g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, 10, h);
-});
-const sandTex = canvasTex(128, 128, (g, w, h) => {
-  g.fillStyle = '#e2b47c'; g.fillRect(0, 0, w, h);
-  for (let i = 0; i < 1600; i++) { const r = 205 + Math.random() * 40 | 0; g.fillStyle = `rgba(${r},${r - 50},${r - 110},.55)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
-});
-sandTex.repeat.set(380, 380);
-
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({map: sandTex, roughness: 1}));
+const offs = (f) => ({polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f});
+const roadMat = new THREE.MeshStandardMaterial(Object.assign({map: roadTex, roughness: 0.92}, offs(-2)));
+const curbMat = new THREE.MeshStandardMaterial(Object.assign({map: curbTex, roughness: 0.8}, offs(-4)));
+function mapWallMat(map) {
+  if (map._wall) return map._wall;
+  const cols = map.wall;
+  const tex = canvasTex(64, 32 * cols.length, (g, w, h) => {
+    cols.forEach((c, i) => { g.fillStyle = c; g.fillRect(0, i * 32, w, 32); });
+    g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, 0, 10, h);
+  });
+  return (map._wall = new THREE.MeshStandardMaterial({map: tex, roughness: 0.85, side: THREE.DoubleSide}));
+}
+function mapSandTex(map) {
+  if (map._sand) return map._sand;
+  const t = canvasTex(128, 128, (g, w, h) => {
+    g.fillStyle = map.sand; g.fillRect(0, 0, w, h);
+    for (let i = 0; i < 1600; i++) { const r = 205 + Math.random() * 40 | 0; g.fillStyle = `rgba(${r},${r - 50},${r - 110},.55)`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+  });
+  t.repeat.set(380, 380);
+  return (map._sand = t);
+}
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(4000, 4000), new THREE.MeshStandardMaterial({roughness: 1}));
 ground.rotation.x = -Math.PI / 2; ground.position.y = -0.02; ground.receiveShadow = true; scene.add(ground);
 
-const offs = (f) => ({polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f});
-ribbon(-HALF, HALF, 0.03, 0, 20, new THREE.MeshStandardMaterial(Object.assign({map: roadTex, roughness: 0.92}, offs(-2))));
-ribbon(-HALF - 1.8, -HALF + 0.2, 0.05, 0, 5, new THREE.MeshStandardMaterial(Object.assign({map: curbTex, roughness: 0.8}, offs(-4))));
-ribbon(HALF - 0.2, HALF + 1.8, 0.05, 0, 5, new THREE.MeshStandardMaterial(Object.assign({map: curbTex, roughness: 0.8}, offs(-4))));
-const wallMat = new THREE.MeshStandardMaterial({map: wallTex, roughness: 0.85, side: THREE.DoubleSide});
-ribbon(-WALL, 0, 0, 1.3, 6, wallMat, true);
-ribbon(WALL, 0, 0, 1.3, 6, wallMat, true);
-
-// стартовая линия + арка
-{
-  const chk = canvasTex(256, 32, (g, w, h) => { for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 16, y * 16, 16, 16); } }, false);
+function buildStartArch() {
+  const chk = canvasTex(256, 32, (g) => { for (let x = 0; x < 16; x++) for (let y = 0; y < 2; y++) { g.fillStyle = (x + y) % 2 ? '#111' : '#fff'; g.fillRect(x * 16, y * 16, 16, 16); } }, false);
   const geo = new THREE.PlaneGeometry(W, 3); geo.rotateX(-Math.PI / 2);
   const line = new THREE.Mesh(geo, new THREE.MeshStandardMaterial(Object.assign({map: chk}, offs(-6))));
-  line.position.set(P[0].x, 0.07, P[0].z); line.rotation.y = TH[0]; line.receiveShadow = true; scene.add(line);
-  const arch = new THREE.Group(); arch.position.copy(P[0]); arch.rotation.y = TH[0]; scene.add(arch);
+  line.position.set(P[0].x, 0.07, P[0].z); line.rotation.y = TH[0]; line.receiveShadow = true; world.add(line);
+  const arch = new THREE.Group(); arch.position.copy(P[0]); arch.rotation.y = TH[0]; world.add(arch);
   for (const s of [-1, 1]) arch.add(cyl(0.55, 0.6, 9.5, 10, 0x2a2a2a, s * (HALF + 3), 4.75, 0));
-  const bt = textTex([['СТАРТ • ФИНИШ', 78, '#ffffff']], {w: 1024, h: 128, bg: '#0b5fa8', accent: '#3ad0ff'});
-  const banner = new THREE.Mesh(new THREE.BoxGeometry(W + 8, 2.8, 0.5), [M(0x0b5fa8), M(0x0b5fa8), M(0x0b5fa8), M(0x0b5fa8), new THREE.MeshStandardMaterial({map: bt}), new THREE.MeshStandardMaterial({map: bt})]);
+  const [bc, bg, acc, txt] = MAP.banner;
+  const bt = textTex([[txt, 78, '#ffffff']], {w: 1024, h: 128, bg, accent: acc});
+  const banner = new THREE.Mesh(new THREE.BoxGeometry(W + 8, 2.8, 0.5), [M(bc), M(bc), M(bc), M(bc), new THREE.MeshStandardMaterial({map: bt}), new THREE.MeshStandardMaterial({map: bt})]);
   banner.position.y = 8.6; banner.castShadow = true; arch.add(banner);
 }
 
@@ -362,6 +410,18 @@ function trackDist(x, z) {
   for (let i = 0; i < N; i += 4) { const dx = x - P[i].x, dz = z - P[i].z, d = dx * dx + dz * dz; if (d < bd) bd = d; }
   return Math.sqrt(bd);
 }
+function scatter(count, tries, minDist, fn, pad = 0) {
+  for (let i = 0, n = 0; i < tries && n < count; i++) {
+    const x = lerp(AREA.x0 - pad, AREA.x1 + pad, srand()), z = lerp(AREA.z0 - pad, AREA.z1 + pad, srand());
+    if (trackDist(x, z) < minDist) continue;
+    n++; fn(x, z);
+  }
+}
+function sideFrame(i, side, off) {
+  const n = NR[i], p = P[i];
+  const nx = -side * n.x, nz = -side * n.z; // нормаль «к дороге»
+  return {x: p.x + n.x * side * off, z: p.z + n.z * side * off, face: Math.atan2(nx - T[i].x * 0.8, nz - T[i].z * 0.8), faceRoad: Math.atan2(nx, nz)};
+}
 function cactus(x, z, s) {
   const g = new THREE.Group(), c = 0x3f8a45;
   g.add(cyl(0.5, 0.6, 5, 8, c, 0, 2.5, 0)); g.add(sph(0.5, c, 0, 5, 0, null, 8, 6));
@@ -370,53 +430,44 @@ function cactus(x, z, s) {
     g.add(cyl(0.33, 0.33, h, 8, c, side * 1.5, y + h / 2, 0)); g.add(sph(0.33, c, side * 1.5, y + h, 0, null, 8, 6));
   };
   arm(1, 2.2, 1.8); if (srand() > 0.35) arm(-1, 2.9, 1.3);
-  g.position.set(x, 0, z); g.scale.setScalar(s); g.rotation.y = srand() * 6.28; scene.add(g);
+  g.position.set(x, 0, z); g.scale.setScalar(s); g.rotation.y = srand() * 6.28; world.add(g);
 }
-const AREA = {x0: -620, x1: 680, z0: -460, z1: 680};
-for (let i = 0, n = 0; i < 400 && n < 34; i++) {
-  const x = lerp(AREA.x0 - 200, AREA.x1 + 200, srand()), z = lerp(AREA.z0 - 200, AREA.z1 + 200, srand());
-  if (trackDist(x, z) < 95) continue; n++;
-  const r = 25 + srand() * 45, h = 30 + srand() * 60;
-  const g = new THREE.Group();
-  const m1 = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.82, r, h, 7), M(0xbd6a3e, {flatShading: true, roughness: 1}));
+function mesa(x, z) {
+  const r = 25 + srand() * 45, h = 30 + srand() * 60, g = new THREE.Group();
+  const m1 = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.82, r, h, 7), M(MAP.mesa[0], {flatShading: true, roughness: 1}));
   m1.position.y = h / 2; g.add(m1);
-  const m2 = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 0.82, h * 0.12, 7), M(0xd98d58, {flatShading: true, roughness: 1}));
+  const m2 = new THREE.Mesh(new THREE.CylinderGeometry(r * 0.7, r * 0.82, h * 0.12, 7), M(MAP.mesa[1], {flatShading: true, roughness: 1}));
   m2.position.y = h + h * 0.06; g.add(m2);
-  g.position.set(x, 0, z); g.rotation.y = srand() * 6; scene.add(g);
+  g.position.set(x, 0, z); g.rotation.y = srand() * 6; world.add(g);
 }
-for (let i = 0, n = 0; i < 600 && n < 90; i++) {
-  const x = lerp(AREA.x0, AREA.x1, srand()), z = lerp(AREA.z0, AREA.z1, srand());
-  if (trackDist(x, z) < WALL + 5) continue; n++;
-  cactus(x, z, 0.8 + srand() * 0.9);
-}
-for (let i = 0, n = 0; i < 500 && n < 70; i++) {
-  const x = lerp(AREA.x0, AREA.x1, srand()), z = lerp(AREA.z0, AREA.z1, srand());
-  if (trackDist(x, z) < WALL + 3) continue; n++;
+function rock(x, z) {
   const r = 0.8 + srand() * 2.6;
   const m = new THREE.Mesh(G('rock', () => new THREE.DodecahedronGeometry(1, 0)), M(0xa86d45, {flatShading: true, roughness: 1}));
   m.scale.set(r, r * (0.5 + srand() * 0.5), r * (0.7 + srand() * 0.5)); m.rotation.set(srand(), srand() * 6, srand());
-  place(m, x, r * 0.3, z); scene.add(m);
+  place(m, x, r * 0.3, z); world.add(m);
 }
-function sideFrame(i, side, off) {
-  const n = NR[i], p = P[i];
-  const nx = -side * n.x, nz = -side * n.z; // нормаль «к дороге»
-  return {x: p.x + n.x * side * off, z: p.z + n.z * side * off, face: Math.atan2(nx - T[i].x * 0.8, nz - T[i].z * 0.8), faceRoad: Math.atan2(nx, nz)};
+function agave(x, z, s) {
+  const g = new THREE.Group(), c = 0x6f9e8c;
+  for (let i = 0; i < 9; i++) {
+    const a = i / 9 * Math.PI * 2, l = cone(0.28, 2.4, 4, c, Math.cos(a) * 0.5, 1.0, Math.sin(a) * 0.5, {flatShading: true});
+    l.rotation.set(Math.sin(a) * 0.75, 0, -Math.cos(a) * 0.75); g.add(l);
+  }
+  g.add(cone(0.3, 3.0, 4, 0x7fae9a, 0, 1.5, 0, {flatShading: true}));
+  g.position.set(x, 0, z); g.scale.setScalar(s); g.rotation.y = srand() * 6; world.add(g);
 }
-const SIGNS = [
-  [90, 1, [['ЖАРЕНАЯ КУРИЦА', 58], ['хрустит как надо • 24/7', 30, '#ffd23a']], '#c8261c'],
-  [330, -1, [['АВТОМОЙКА «ПЕНА»', 56], ['блеск за 5 минут', 32, '#ffe1f0']], '#e8508f'],
-  [600, 1, [['ПРОБЛЕМЫ С ЗАКОНОМ?', 50], ['звони адвокату!', 36, '#ffd23a']], '#26456e'],
-  [860, -1, [['КРИСТАЛЬНО ЧИСТО', 58], ['синий — цвет победы', 32, '#bff1ff']], '#0b5fa8'],
-  [1100, 1, [['ПУСТЫННОЕ РАЛЛИ', 58], ['3 круга • 8 гонщиков', 32, '#ffd23a']], '#3a2a1a'],
-];
-for (const [i, side, lines, bg] of SIGNS) {
+function billboard(i, side, lines, bg) {
   const f = sideFrame(i, side, WALL + 6);
-  const g = new THREE.Group(); g.position.set(f.x, 0, f.z); g.rotation.y = f.face; scene.add(g);
+  const g = new THREE.Group(); g.position.set(f.x, 0, f.z); g.rotation.y = f.face; world.add(g);
   const tex = textTex(lines, {bg});
   const plain = M(0x333333);
   const board = new THREE.Mesh(G('board', () => new THREE.BoxGeometry(12, 6, 0.35)), [plain, plain, plain, plain, new THREE.MeshStandardMaterial({map: tex, roughness: 0.6}), plain]);
   board.position.y = 6.5; board.castShadow = true; g.add(board);
   g.add(cyl(0.22, 0.22, 4, 6, 0x555555, -4, 2, -0.1)); g.add(cyl(0.22, 0.22, 4, 6, 0x555555, 4, 2, -0.1));
+}
+function frontSign(g, lines, opts, w, h, x, y, z) {
+  const st = textTex(lines, opts), d = M(0x222222);
+  const sign = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.4), [d, d, d, d, new THREE.MeshStandardMaterial({map: st}), d]);
+  sign.position.set(x, y, z); sign.castShadow = true; g.add(sign);
 }
 
 // вёдра / ножки (используются и как предметы, и в декорациях)
@@ -439,28 +490,152 @@ function makeBucket() {
   return g;
 }
 
-// закусочная у трассы
-{
-  const f = sideFrame(250, 1, WALL + 26);
-  const g = new THREE.Group(); g.position.set(f.x, 0, f.z); g.rotation.y = f.faceRoad; scene.add(g);
+// --- пустыня ---
+function diner(i, side) {
+  const f = sideFrame(i, side, WALL + 26);
+  const g = new THREE.Group(); g.position.set(f.x, 0, f.z); g.rotation.y = f.faceRoad; world.add(g);
   g.add(box(22, 6, 12, 0xf1e2c4, 0, 3, 0));
   g.add(box(23, 0.8, 13, 0xc8261c, 0, 6.4, 0));
   g.add(box(23.2, 0.5, 13.2, 0xffd23a, 0, 5.8, 0));
   for (let x = -8; x <= 8; x += 4) g.add(box(2.8, 2.2, 0.1, 0x2a3a4a, x, 2.8, 6.02, {metalness: 0.4, roughness: 0.2}));
   g.add(box(2.4, 3.6, 0.12, 0x7a3a16, 0, 1.8, 6.04));
-  const st = textTex([['ЖАРЕНАЯ КУРИЦА', 62], ['закусочная «Курочка»', 30, '#ffd23a']], {bg: '#c8261c'});
-  const sign = new THREE.Mesh(new THREE.BoxGeometry(14, 4, 0.4), [M(0x222222), M(0x222222), M(0x222222), M(0x222222), new THREE.MeshStandardMaterial({map: st}), M(0x222222)]);
-  sign.position.set(0, 9.4, 4); g.add(sign);
+  frontSign(g, [['ЖАРЕНАЯ КУРИЦА', 62], ['закусочная «Курочка»', 30, '#ffd23a']], {bg: '#c8261c'}, 14, 4, 0, 9.4, 4);
   g.add(cyl(0.2, 0.2, 2.6, 6, 0x444444, -5, 7.4, 4)); g.add(cyl(0.2, 0.2, 2.6, 6, 0x444444, 5, 7.4, 4));
   const bk = makeBucket(); bk.scale.setScalar(3.4); bk.position.set(-7, 9.2, -2); g.add(bk);
 }
+function decorDesert() {
+  scatter(34, 400, 95, mesa, 200);
+  scatter(90, 600, WALL + 5, (x, z) => cactus(x, z, 0.8 + srand() * 0.9));
+  scatter(70, 500, WALL + 3, rock);
+  billboard(90, 1, [['ЖАРЕНАЯ КУРИЦА', 58], ['хрустит как надо • 24/7', 30, '#ffd23a']], '#c8261c');
+  billboard(330, -1, [['АВТОМОЙКА «ПЕНА»', 56], ['блеск за 5 минут', 32, '#ffe1f0']], '#e8508f');
+  billboard(600, 1, [['ПРОБЛЕМЫ С ЗАКОНОМ?', 50], ['звони адвокату!', 36, '#ffd23a']], '#26456e');
+  billboard(860, -1, [['КРИСТАЛЬНО ЧИСТО', 58], ['синий — цвет победы', 32, '#bff1ff']], '#0b5fa8');
+  billboard(1100, 1, [['ПУСТЫННОЕ РАЛЛИ', 58], ['3 круга • 8 гонщиков', 32, '#ffd23a']], '#3a2a1a');
+  diner(250, 1);
+}
 
-// перекати-поле
-const tumbleweeds = [];
-for (let i = 0; i < 9; i++) {
-  const m = new THREE.Mesh(G('tw', () => new THREE.IcosahedronGeometry(1.3, 1)), new THREE.MeshStandardMaterial({color: 0x9a7040, wireframe: true}));
-  m.position.set(rand(-350, 400), 1.3, rand(-200, 400)); scene.add(m);
-  tumbleweeds.push({m, vx: rand(4, 9), vz: rand(-3, 3)});
+// --- Мексика ---
+const ADOBE = [0xd9925b, 0xe8b07a, 0xf2d6a8, 0xd66a4f, 0x6fb7a8, 0xe9a8b8, 0xf0c94a, 0xb8d0e0];
+const PP_COLS = [0xe2412e, 0xff8a1f, 0xffd23a, 0x3fa34d, 0x3ad0ff, 0xe8508f, 0x8a5cd6];
+function adobe(g, w, d, h, col) {
+  const lighter = new THREE.Color(col).offsetHSL(0, 0, 0.08).getHex();
+  g.add(box(w, h, d, col, 0, h / 2, 0, {roughness: 1}));
+  g.add(box(w + 0.4, 0.5, d + 0.4, lighter, 0, h + 0.25, 0, {roughness: 1}));
+  for (let i = 0; i < Math.floor(w / 2.2); i++) { const v = cyl(0.18, 0.18, 1.4, 6, 0x6a4022, -w / 2 + 1.2 + i * 2.2, h - 0.6, d / 2 + 0.4); v.rotation.x = Math.PI / 2; g.add(v); }
+  g.add(box(1.4, 2.4, 0.12, 0x5a3418, -w * 0.18, 1.2, d / 2 + 0.03));
+  g.add(box(1.3, 1.2, 0.12, 0x2d5a8a, w * 0.22, h * 0.55, d / 2 + 0.03));
+  g.add(box(1.7, 0.18, 0.24, 0xf2e6cc, w * 0.22, h * 0.55 - 0.7, d / 2 + 0.1));
+}
+function house(i, side, off) {
+  const f = sideFrame(i, side, off);
+  const w = 6 + Math.round(srand() * 6), d = 5 + Math.round(srand() * 4), h = 3 + Math.round(srand() * 3);
+  if (trackDist(f.x, f.z) < WALL + 4 + Math.max(w, d) * 0.6) return;
+  const g = new THREE.Group(); g.position.set(f.x, 0, f.z); g.rotation.y = f.faceRoad + (srand() - 0.5) * 0.3; world.add(g);
+  adobe(g, w, d, h, ADOBE[Math.floor(srand() * ADOBE.length)]);
+  if (srand() < 0.4) { const p = cyl(0.5, 0.35, 0.8, 8, 0xb5552e, w / 2 - 0.8, 0.4, d / 2 + 1.0); g.add(p); g.add(sph(0.6, 0x3f8a45, w / 2 - 0.8, 1.0, d / 2 + 1.0, null, 8, 6)); }
+}
+function church(i, side) {
+  const f = sideFrame(i, side, WALL + 36);
+  const g = new THREE.Group(); g.position.set(f.x, 0, f.z); g.rotation.y = f.faceRoad; world.add(g);
+  const Wc = 0xf4ecdc;
+  g.add(box(14, 10, 22, Wc, 0, 5, -4, {roughness: 1}));
+  g.add(box(14.6, 0.6, 22.6, 0xe0d2b8, 0, 10.3, -4));
+  g.add(box(10, 4, 0.8, Wc, 0, 12, 6.9, {roughness: 1})); g.add(box(5, 2.5, 0.8, Wc, 0, 15, 6.9, {roughness: 1}));
+  g.add(box(3.2, 5.5, 0.2, 0x5a3418, 0, 2.75, 7.05));
+  g.add(sph(1.1, 0x2d5a8a, 0, 8, 7.0, null, 12, 8));
+  for (const s of [-1, 1]) {
+    g.add(box(4.5, 18, 4.5, Wc, s * 7.5, 9, 5.5, {roughness: 1}));
+    g.add(box(2.2, 3, 4.7, 0x3a2a1a, s * 7.5, 14.5, 5.5));
+    const roof = cone(3.3, 4, 4, 0xd66a4f, s * 7.5, 20, 5.5, {flatShading: true}); roof.rotation.y = Math.PI / 4; g.add(roof);
+  }
+  g.add(box(0.3, 2.2, 0.3, 0x3a2a1a, 0, 17.4, 6.9)); g.add(box(1.4, 0.3, 0.3, 0x3a2a1a, 0, 17.8, 6.9));
+}
+function cantina(i, side) {
+  const f = sideFrame(i, side, WALL + 26);
+  const g = new THREE.Group(); g.position.set(f.x, 0, f.z); g.rotation.y = f.faceRoad; world.add(g);
+  adobe(g, 22, 12, 7, 0xd9925b);
+  g.add(box(22, 0.3, 4, 0x6a4022, 0, 4.4, 8));
+  for (const x of [-10, -3.5, 3.5, 10]) g.add(cyl(0.2, 0.2, 4.4, 6, 0x6a4022, x, 2.2, 9.8));
+  frontSign(g, [['CANTINA', 76], ['«EL DESIERTO»', 38, '#ffd23a']], {bg: '#1f7a3a', accent: '#e2412e'}, 12, 4, 4, 9.6, 5);
+  const sg = new THREE.Group(); sg.position.set(-6, 7.5, -2); g.add(sg);
+  sg.add(cyl(5, 5, 0.35, 28, 0xe8c060, 0, 0.2, 0)); sg.add(cone(2.2, 4, 18, 0xe8c060, 0, 2.3, 0)); sg.add(cyl(2.0, 2.0, 0.6, 18, 0xd8261c, 0, 0.7, 0));
+  for (let k = 0; k < 3; k++) { const b = makeBucket(); b.position.set(8 - k * 1.6, 0.68, 10.5); b.scale.setScalar(0.6); g.add(b); }
+}
+function papelPicado(i) {
+  const g = new THREE.Group(); g.position.copy(P[i]); g.rotation.y = TH[i]; world.add(g);
+  const span = HALF + 3, n = 18, sag = (t) => 8.6 - Math.sin(t * Math.PI) * 1.6;
+  for (const s of [-1, 1]) g.add(cyl(0.18, 0.22, 9, 6, 0x6a4022, s * span, 4.5, 0));
+  const pts = [];
+  for (let k = 0; k <= 12; k++) { const t = k / 12; pts.push(new THREE.Vector3(-span + t * span * 2, sag(t), 0)); }
+  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts), 24, 0.05, 4), M(0xf4f4f4)));
+  for (let k = 1; k < n; k++) {
+    const t = k / n;
+    const fl = new THREE.Mesh(G('flag', () => new THREE.PlaneGeometry(1.2, 1.5)), M(PP_COLS[(k + i) % PP_COLS.length], {side: THREE.DoubleSide, roughness: 0.8, emissive: PP_COLS[(k + i) % PP_COLS.length], emissiveIntensity: 0.15}));
+    fl.position.set(-span + t * span * 2, sag(t) - 0.8, 0); fl.rotation.z = (srand() - 0.5) * 0.16; fl.castShadow = true; g.add(fl);
+  }
+}
+function decorMexico() {
+  scatter(28, 400, 110, mesa, 220);
+  scatter(70, 600, WALL + 4, (x, z) => agave(x, z, 0.8 + srand() * 0.8));
+  scatter(35, 500, WALL + 5, (x, z) => cactus(x, z, 0.7 + srand() * 0.8));
+  scatter(60, 500, WALL + 3, rock);
+  for (let i = 40; i < N - 30; i += 34) {
+    if (Math.abs(i - 250) < 40 || Math.abs(i - 600) < 45) continue;
+    house(i, srand() < 0.5 ? 1 : -1, WALL + 9 + srand() * 22);
+    if (srand() < 0.45) house(i + 12, srand() < 0.5 ? 1 : -1, WALL + 30 + srand() * 25);
+  }
+  for (const i of [60, 160, 290, 380, 520, 660, 780, 900, 1040, 1140]) papelPicado(i);
+  billboard(110, -1, [['TACOS AL PASTOR', 56], ['24 horas • muy sabroso', 32, '#ffd23a']], '#c8261c');
+  billboard(420, 1, [['BIENVENIDOS', 64], ['a México, amigo', 36, '#ffd23a']], '#1f7a3a');
+  billboard(740, -1, [['LAVANDERÍA', 62], ['limpio y rápido', 34, '#bff1ff']], '#26456e');
+  billboard(960, 1, [['POLLO ASADO', 62], ['el mejor del desierto', 32, '#ffd23a']], '#d8661c');
+  billboard(1120, -1, [['CERVEZA FRÍA', 62], ['en la cantina →', 34, '#ffd23a']], '#3a2a1a');
+  cantina(250, 1);
+  church(600, -1);
+}
+
+function buildBoxes() {
+  boxes = [];
+  for (const i of BOX_ROWS) for (const l of [-8, -4, 0, 4, 8]) {
+    const g = new THREE.Group();
+    const a = new THREE.Mesh(crystalGeo, crystalMat); a.scale.set(0.75, 1.45, 0.75); a.castShadow = true; g.add(a);
+    const b = new THREE.Mesh(crystalGeo, crystalMat); b.scale.set(0.4, 0.85, 0.4); b.position.set(0.7, -0.45, 0.1); b.rotation.z = -0.5; g.add(b);
+    const c2 = new THREE.Mesh(crystalGeo, crystalMat); c2.scale.set(0.35, 0.7, 0.35); c2.position.set(-0.65, -0.55, -0.15); c2.rotation.z = 0.55; g.add(c2);
+    const x = P[i].x + NR[i].x * l, z = P[i].z + NR[i].z * l;
+    g.position.set(x, 1.7, z); world.add(g);
+    boxes.push({g, x, z, active: true, t: 0, phase: Math.random() * 6});
+  }
+}
+
+function buildWorld(id) {
+  mapId = MAPS[id] ? id : 'desert'; MAP = MAPS[mapId]; seed = MAP.seed;
+  if (world) {
+    scene.remove(world);
+    world.traverse(o => { if (o.geometry && !o.geometry.userData.cached) o.geometry.dispose(); });
+  }
+  world = new THREE.Group(); scene.add(world);
+  computeTrack(MAP);
+  scene.fog.color.setHex(MAP.fog); scene.background.setHex(MAP.fog);
+  sky.material.uniforms.top.value.setHex(MAP.skyTop); sky.material.uniforms.mid.value.setHex(MAP.skyMid); sky.material.uniforms.bot.value.setHex(MAP.fog);
+  sun.color.setHex(MAP.sun); hemi.color.setHex(MAP.hemi[0]); hemi.groundColor.setHex(MAP.hemi[1]);
+  ground.material.map = mapSandTex(MAP); ground.material.needsUpdate = true;
+  document.body.classList.toggle('mexico-filter', !!MAP.filter);
+  ribbon(-HALF, HALF, 0.03, 0, 20, roadMat);
+  ribbon(-HALF - 1.8, -HALF + 0.2, 0.05, 0, 5, curbMat);
+  ribbon(HALF - 0.2, HALF + 1.8, 0.05, 0, 5, curbMat);
+  ribbon(-WALL, 0, 0, 1.3, 6, mapWallMat(MAP), true);
+  ribbon(WALL, 0, 0, 1.3, 6, mapWallMat(MAP), true);
+  buildStartArch();
+  if (mapId === 'mexico') decorMexico(); else decorDesert();
+  buildBoxes();
+  tumbleweeds = [];
+  for (let i = 0; i < 9; i++) {
+    const m = new THREE.Mesh(G('tw', () => new THREE.IcosahedronGeometry(1.3, 1)), M(0x9a7040, {wireframe: true}));
+    m.position.set(lerp(AREA.x0, AREA.x1, srand()), 1.3, lerp(AREA.z0 + 200, AREA.z1 - 200, srand())); world.add(m);
+    tumbleweeds.push({m, vx: rand(4, 9), vz: rand(-3, 3)});
+  }
+  buildMinimap();
 }
 
 // ============================================================
@@ -695,16 +870,6 @@ function makeTag(text, color) {
 const BOX_ROWS = [150, 430, 700, 980];
 const crystalMat = new THREE.MeshStandardMaterial({color: 0x48d6ff, emissive: 0x0d6cff, emissiveIntensity: 0.85, metalness: 0.25, roughness: 0.12, flatShading: true, transparent: true, opacity: 0.93});
 const crystalGeo = new THREE.OctahedronGeometry(1, 0);
-const boxes = [];
-for (const i of BOX_ROWS) for (const l of [-8, -4, 0, 4, 8]) {
-  const g = new THREE.Group();
-  const a = new THREE.Mesh(crystalGeo, crystalMat); a.scale.set(0.75, 1.45, 0.75); a.castShadow = true; g.add(a);
-  const b = new THREE.Mesh(crystalGeo, crystalMat); b.scale.set(0.4, 0.85, 0.4); b.position.set(0.7, -0.45, 0.1); b.rotation.z = -0.5; g.add(b);
-  const c2 = new THREE.Mesh(crystalGeo, crystalMat); c2.scale.set(0.35, 0.7, 0.35); c2.position.set(-0.65, -0.55, -0.15); c2.rotation.z = 0.55; g.add(c2);
-  const x = P[i].x + NR[i].x * l, z = P[i].z + NR[i].z * l;
-  g.position.set(x, 1.7, z); scene.add(g);
-  boxes.push({g, x, z, active: true, t: 0, phase: Math.random() * 6});
-}
 let hazards = [], projectiles = [];
 
 // ============================================================
@@ -1183,7 +1348,7 @@ function updateCamera(dt) {
 const mm = $('minimap'), mctx = mm.getContext('2d');
 const MMS = 420; mm.width = mm.height = MMS;
 let mmBg, mmMap;
-{
+function buildMinimap() {
   let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
   for (const p of P) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); z0 = Math.min(z0, p.z); z1 = Math.max(z1, p.z); }
   const pad = 30, sc = (MMS - pad * 2) / Math.max(x1 - x0, z1 - z0);
@@ -1256,6 +1421,15 @@ function buildRosterUI() {
       <div class="bars">${stat('Скорость', (c.stats.max - 52) / 6)}${stat('Разгон', (c.stats.accel - 15) / 8)}${stat('Управление', (c.stats.handle - 1.3) / 0.9)}${stat('Вес', (c.stats.weight - 0.6) / 1.4)}</div>
     </div>`).join('');
 }
+function buildMapUI() {
+  $('maps').innerHTML = Object.entries(MAPS).map(([id, m]) => `<button class="mapCard${id === mapId ? ' sel' : ''}" data-map="${id}"><div class="pv pv-${id}"></div><b>${m.name}</b><span>${m.desc}</span></button>`).join('');
+  $('maps').querySelectorAll('.mapCard').forEach(b => b.onclick = () => selectMap(b.dataset.map));
+}
+function selectMap(id) {
+  if (id !== mapId) { buildWorld(id); resetRace(); }
+  try { localStorage.setItem('bluedrift.map', mapId); } catch (e) {}
+  buildMapUI();
+}
 function show(id, on) { $(id).classList.toggle('hidden', !on); }
 function startRace() {
   paused = false;
@@ -1281,7 +1455,7 @@ function onPlayerFinish() {
 function fillResults() {
   const order = rankAll();
   $('resTitle').textContent = player.rank === 1 ? '🏆 ПОБЕДА!' : `${player.rank}-е место`;
-  $('resSub').textContent = `Время: ${fmtTime(player.finishTime)} • Лучший круг: ${fmtTime(player.bestLap)}`;
+  $('resSub').textContent = `${MAP.name} • Время: ${fmtTime(player.finishTime)} • Лучший круг: ${fmtTime(player.bestLap)}`;
   $('resBody').innerHTML = order.map((k, i) => `<tr class="${k.isPlayer ? 'me' : ''}"><td>${i + 1}</td><td><span style="display:inline-block;width:12px;height:12px;border-radius:50%;background:${hex(k.c.color)};margin-right:8px"></span>${k.isPlayer ? k.c.name + ' (ты)' : k.c.name}</td><td>${k.finished ? fmtTime(k.finishTime) : 'круг ' + clamp(k.lap, 1, LAPS) + '/' + LAPS}</td></tr>`).join('');
 }
 $('startBtn').onclick = () => { initAudio(); startRace(); };
@@ -1356,13 +1530,15 @@ function frame(now) {
 }
 
 function boot() {
-  buildKarts(); buildRosterUI(); resetRace();
+  let saved = 'desert';
+  try { saved = new URLSearchParams(location.search).get('map') || localStorage.getItem('bluedrift.map') || 'desert'; } catch (e) {}
+  buildWorld(saved); buildKarts(); buildRosterUI(); buildMapUI(); resetRace();
   requestAnimationFrame(frame);
 }
 const fontReady = document.fonts && document.fonts.load ? document.fonts.load('40px "Russo One"') : Promise.resolve();
 Promise.race([fontReady, new Promise(r => setTimeout(r, 1500))]).catch(() => {}).then(boot);
 // для отладки из консоли
-window.__game = {get karts() { return karts; }, get state() { return state; }, get player() { return player; }, startRace, sim(sec) { for (let t = 0; t < sec; t += 1 / 60) step(1 / 60); }};
+window.__game = {get karts() { return karts; }, get state() { return state; }, get player() { return player; }, get P() { return P; }, get mapId() { return mapId; }, selectMap, startRace, sim(sec) { for (let t = 0; t < sec; t += 1 / 60) step(1 / 60); }};
 })();
 </script>
 </body>
