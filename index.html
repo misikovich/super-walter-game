@@ -46,8 +46,10 @@ canvas#gl{display:block;position:fixed;inset:0}
 #tint{position:fixed;inset:0;pointer-events:none;z-index:40;display:none;mix-blend-mode:multiply;background:radial-gradient(ellipse at center,#fff0a0 30%,#c98214 100%);opacity:.62}
 body.mexico-filter #tint{display:block}
 body.mexico-filter #gl{filter:sepia(.6) saturate(1.8) contrast(1.06)}
+body.space-filter #tint{display:block;mix-blend-mode:normal;background:radial-gradient(ellipse at center,rgba(0,0,0,0) 52%,rgba(24,4,48,.6) 100%);opacity:1}
+body.space-filter #gl{filter:saturate(1.3) contrast(1.08)}
 .sec{font-size:13px;letter-spacing:.18em;opacity:.7;margin:4px 2px 8px}
-.maps{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px}
+.maps{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px}
 .mapCard{pointer-events:auto;cursor:pointer;text-align:left;font-family:inherit;color:#fff;padding:12px 14px;border-radius:14px;background:rgba(10,14,22,.62);border:2px solid rgba(255,255,255,.12);transition:border-color .15s,transform .15s,box-shadow .15s}
 .mapCard:hover{transform:translateY(-2px)}
 .mapCard.sel{border-color:var(--blue);box-shadow:0 0 0 3px rgba(58,208,255,.25)}
@@ -56,6 +58,7 @@ body.mexico-filter #gl{filter:sepia(.6) saturate(1.8) contrast(1.06)}
 .mapCard .pv{height:54px;border-radius:10px;margin-bottom:10px}
 .pv-desert{background:linear-gradient(180deg,#3a8ad8,#9fd0f5 45%,#f3cfa0 62%,#e2b47c)}
 .pv-mexico{background:linear-gradient(180deg,#b8a040,#f2d27a 45%,#e9c46a 62%,#c98a40);filter:sepia(.4) saturate(1.6)}
+.pv-space{background:radial-gradient(circle at 78% 34%,#ffb0e0 0 7px,#c04fa0 8px 11px,transparent 12px),radial-gradient(1px 1px at 12% 22%,#fff 99%,transparent),radial-gradient(1px 1px at 34% 70%,#fff 99%,transparent),radial-gradient(1.5px 1.5px at 56% 18%,#fff 99%,transparent),radial-gradient(1px 1px at 88% 80%,#fff 99%,transparent),linear-gradient(170deg,transparent 58%,#3ad0ff 60%,#b45cff 66%,#ff4fb0 72%,transparent 74%),linear-gradient(180deg,#05020f,#1a0b3a 60%,#3a1460)}
 #muteBtn{pointer-events:auto;position:absolute;right:22px;top:112px;width:44px;height:44px;border-radius:12px;font-size:20px;color:#fff;cursor:pointer}
 .screen{position:fixed;inset:0;display:flex;justify-content:center;padding:24px 16px;overflow:auto;background:linear-gradient(180deg,rgba(6,18,38,.62),rgba(40,18,4,.78));z-index:10}
 .wrap{width:min(1120px,100%);margin:auto}
@@ -247,6 +250,49 @@ const sky = new THREE.Mesh(new THREE.SphereGeometry(1800, 32, 16), new THREE.Sha
 scene.add(sky);
 const sunDisc = new THREE.Mesh(new THREE.SphereGeometry(60, 20, 12), new THREE.MeshBasicMaterial({color: 0xfff6d8, fog: false}));
 scene.add(sunDisc);
+sky.renderOrder = -1;
+
+// звёзды, туманности и планеты — дочерние к небу, поэтому «бесконечно далеко»
+const spaceSky = new THREE.Group(); spaceSky.visible = false; sky.add(spaceSky);
+(() => {
+  const n = 4000, pos = new Float32Array(n * 3), col = new Float32Array(n * 3), c = new THREE.Color();
+  for (let i = 0; i < n; i++) {
+    const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u);
+    pos.set([Math.cos(a) * r * 1600, u * 1600, Math.sin(a) * r * 1600], i * 3);
+    c.setHSL([0.6, 0.75, 0.1, 0][i % 4], 0.6, 0.75 + Math.random() * 0.25); col.set([c.r, c.g, c.b], i * 3);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3)); geo.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  spaceSky.add(new THREE.Points(geo, new THREE.PointsMaterial({size: 2.4, sizeAttenuation: false, vertexColors: true, fog: false, depthWrite: false})));
+  const glow = (inner, outer) => canvasTex(128, 128, (g) => {
+    const gr = g.createRadialGradient(64, 64, 0, 64, 64, 64);
+    gr.addColorStop(0, inner); gr.addColorStop(0.5, outer); gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, 128, 128);
+  }, false);
+  [[[-0.5, 0.25, -0.8], 'rgba(255,79,176,.55)', 'rgba(120,30,140,.25)', 1300],
+   [[0.7, 0.1, 0.5], 'rgba(58,208,255,.45)', 'rgba(40,60,160,.22)', 1500],
+   [[0.1, -0.5, 0.9], 'rgba(180,92,255,.5)', 'rgba(60,20,120,.25)', 1400],
+   [[-0.8, -0.2, 0.3], 'rgba(255,170,90,.3)', 'rgba(120,40,60,.18)', 1000]].forEach(([d, a, b, s]) => {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({map: glow(a, b), blending: THREE.AdditiveBlending, depthWrite: false, fog: false, transparent: true}));
+    sp.position.copy(new THREE.Vector3(...d).normalize().multiplyScalar(1500)); sp.scale.setScalar(s); spaceSky.add(sp);
+  });
+  const planet = (dir, r, color, ring) => {
+    const g = new THREE.Group(); g.position.copy(new THREE.Vector3(...dir).normalize().multiplyScalar(1300));
+    const tex = canvasTex(256, 128, (x, w, h) => {
+      x.fillStyle = hex(color); x.fillRect(0, 0, w, h);
+      for (let i = 0; i < 18; i++) { x.fillStyle = `rgba(${i % 2 ? '255,255,255' : '0,0,0'},${0.05 + Math.random() * 0.12})`; x.fillRect(0, Math.random() * h, w, 3 + Math.random() * 12); }
+    }, false);
+    g.add(new THREE.Mesh(new THREE.SphereGeometry(r, 40, 24), new THREE.MeshStandardMaterial({map: tex, roughness: 0.9, fog: false, emissive: color, emissiveIntensity: 0.12})));
+    if (ring) {
+      const rg = new THREE.Mesh(new THREE.RingGeometry(r * 1.35, r * 2.1, 64), new THREE.MeshBasicMaterial({color: ring, transparent: true, opacity: 0.55, side: THREE.DoubleSide, fog: false}));
+      rg.rotation.x = -1.2; rg.rotation.y = 0.3; g.add(rg);
+    }
+    spaceSky.add(g);
+  };
+  planet([0.6, 0.35, -0.7], 190, 0xd86fb0, 0xffc8f0);
+  planet([-0.75, 0.22, 0.6], 90, 0x4fa8ff, null);
+  planet([0.2, 0.55, 0.8], 45, 0xffd28a, null);
+})();
 
 const hemi = new THREE.HemisphereLight(0xcfe8ff, 0xc99a60, 0.78);
 scene.add(hemi);
@@ -307,7 +353,14 @@ const MAPS = {
     cp: [[0,0],[150,0],[230,-40],[310,0],[300,110],[210,140],[170,220],[230,300],[160,370],[40,350],[-20,270],[-120,290],[-210,230],[-230,130],[-180,40],[-110,-40],[-40,-40]], scale: 1.32,
     fog: 0xe9c46a, skyTop: 0x5f94c0, skyMid: 0xf2dc96, sun: 0xffe0a0, hemi: [0xfff0c0, 0xc98a40],
     sand: '#d9a35f', mesa: [0xc9783a, 0xe0a060], wall: ['#1f8a3e', '#f4f1ea', '#d8261c'],
-    banner: [0x1f7a3a, '#1f7a3a', '#ffd23a', 'SALIDA • META'], filter: true, seed: 777,
+    banner: [0x1f7a3a, '#1f7a3a', '#ffd23a', 'SALIDA • META'], filter: 'mexico', seed: 777,
+  },
+  space: {
+    name: 'Космос', desc: 'Неоновая трасса над пропастью, планеты, астероиды и летающие тарелки',
+    cp: [[0,0],[140,0],[240,-60],[330,-20],[345,80],[265,135],[180,115],[115,170],[160,260],[100,335],[-20,325],[-80,240],[-180,255],[-265,175],[-245,70],[-150,30],[-70,-30]], scale: 1.35,
+    fog: 0x1a0838, fogNear: 420, fogFar: 2600, skyTop: 0x03010a, skyMid: 0x12062e, sun: 0xdfe6ff, hemi: [0x9a8cff, 0x3a1460],
+    sunDisc: 0xbfe0ff, dust: 0xb48cff, sand: '#000000', wall: ['#3ad0ff'],
+    banner: [0x2a0f5e, '#2a0f5e', '#ff4fb0', 'СТАРТ • ОРБИТА'], filter: 'space', space: true, seed: 4242,
   },
 };
 let MAP = MAPS.desert, mapId = 'desert';
@@ -317,7 +370,7 @@ let MAP = MAPS.desert, mapId = 'desert';
 // ============================================================
 let P = [], T = [], NR = [], TH = [], DIST = [], KAPPA = [], TOTAL = 0, SPACING = 1;
 let AREA = {x0: -620, x1: 680, z0: -460, z1: 680};
-let world = null, boxes = [], tumbleweeds = [];
+let world = null, boxes = [], tumbleweeds = [], ufos = [], spinners = [], gates = [];
 
 function computeTrack(map) {
   const cp = map.cp.map(([x, z]) => new THREE.Vector3(x * map.scale, 0, z * map.scale));
@@ -368,6 +421,33 @@ const curbTex = canvasTex(32, 64, (g, w, h) => { g.fillStyle = '#d82a22'; g.fill
 const offs = (f) => ({polygonOffset: true, polygonOffsetFactor: f, polygonOffsetUnits: f});
 const roadMat = new THREE.MeshStandardMaterial(Object.assign({map: roadTex, roughness: 0.92}, offs(-2)));
 const curbMat = new THREE.MeshStandardMaterial(Object.assign({map: curbTex, roughness: 0.8}, offs(-4)));
+
+// --- космос: светящаяся дорога, стеклянные обочины, неоновые борта ---
+const SPACE_BANDS = ['#ff4fb0', '#b45cff', '#5a6cff', '#3ad0ff', '#5a6cff', '#b45cff', '#ff4fb0'];
+const spaceRoadTex = canvasTex(256, 256, (g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, w, 0);
+  SPACE_BANDS.forEach((c, i) => gr.addColorStop(i / (SPACE_BANDS.length - 1), c));
+  g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  g.fillStyle = 'rgba(8,2,24,.55)'; g.fillRect(0, 0, w, h);               // приглушаем, чтобы светились только линии
+  for (let y = 0; y < h; y += 64) {                                        // бегущие шевроны
+    g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = 6; g.beginPath();
+    g.moveTo(w * 0.3, y + 34); g.lineTo(w * 0.5, y + 12); g.lineTo(w * 0.7, y + 34); g.stroke();
+  }
+  for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.5})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
+  g.fillStyle = '#ffffff'; g.fillRect(4, 0, 6, h); g.fillRect(w - 10, 0, 6, h);
+});
+spaceRoadTex.wrapS = THREE.ClampToEdgeWrapping;
+const spaceRoadMat = new THREE.MeshStandardMaterial(Object.assign({map: spaceRoadTex, emissiveMap: spaceRoadTex, emissive: 0xffffff, emissiveIntensity: 0.75, roughness: 0.25, metalness: 0.3}, offs(-2)));
+const spaceCurbTex = canvasTex(32, 64, (g, w, h) => { g.fillStyle = '#3ad0ff'; g.fillRect(0, 0, w, h / 2); g.fillStyle = '#ff4fb0'; g.fillRect(0, h / 2, w, h / 2); });
+const spaceCurbMat = new THREE.MeshStandardMaterial(Object.assign({map: spaceCurbTex, emissiveMap: spaceCurbTex, emissive: 0xffffff, emissiveIntensity: 0.9}, offs(-4)));
+const glassTex = canvasTex(64, 64, (g, w, h) => {
+  g.fillStyle = '#140a30'; g.fillRect(0, 0, w, h);
+  g.strokeStyle = 'rgba(122,96,255,.7)'; g.lineWidth = 2; g.strokeRect(1, 1, w - 2, h - 2);
+});
+const spaceShoulderMat = new THREE.MeshStandardMaterial({map: glassTex, emissiveMap: glassTex, emissive: 0xffffff, emissiveIntensity: 0.5, transparent: true, opacity: 0.72, roughness: 0.2, metalness: 0.5});
+const spaceWallMat = new THREE.MeshBasicMaterial({color: 0x3ad0ff, transparent: true, opacity: 0.38, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false});
+const curtainTex = canvasTex(64, 8, (g, w, h) => { const gr = g.createLinearGradient(0, 0, w, 0); gr.addColorStop(0, 'rgba(180,92,255,0)'); gr.addColorStop(1, 'rgba(255,79,176,.9)'); g.fillStyle = gr; g.fillRect(0, 0, w, h); }, false);
+const spaceCurtainMat = new THREE.MeshBasicMaterial({map: curtainTex, transparent: true, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false});
 function mapWallMat(map) {
   if (map._wall) return map._wall;
   const cols = map.wall;
@@ -595,6 +675,81 @@ function decorMexico() {
   church(600, -1);
 }
 
+// --- космос ---
+const NEON = [0x3ad0ff, 0xff4fb0, 0xb45cff, 0x7dff9a];
+function asteroid(x, z) {
+  const r = 3 + srand() * 12, y = (srand() - 0.4) * 140;
+  if (y > -14 && y < 26 && trackDist(x, z) < WALL + 30 + r) return;
+  const m = new THREE.Mesh(G('ast', () => new THREE.DodecahedronGeometry(1, 1)), M(srand() < 0.5 ? 0x6a5a7a : 0x8a6a5a, {flatShading: true, roughness: 1}));
+  m.scale.set(r, r * (0.6 + srand() * 0.4), r * (0.7 + srand() * 0.4)); m.rotation.set(srand() * 6, srand() * 6, 0);
+  m.position.set(x, y, z); world.add(m);
+  spinners.push({m, sx: (srand() - 0.5) * 0.4, sy: (srand() - 0.5) * 0.4, y, ph: srand() * 6});
+}
+function ringGate(i, n) {
+  const g = new THREE.Group(); g.position.copy(P[i]); g.rotation.y = TH[i]; world.add(g);
+  const col = NEON[n % NEON.length];
+  const mat = new THREE.MeshStandardMaterial({color: col, emissive: col, emissiveIntensity: 1.2, roughness: 0.3});
+  const t = new THREE.Mesh(G('gate', () => new THREE.TorusGeometry(HALF + 5, 0.55, 10, 64)), mat); g.add(t);
+  gates.push({mat, ph: n * 0.7});
+}
+function ufo(i, n) {
+  const g = new THREE.Group(); world.add(g);
+  const hull = new THREE.MeshStandardMaterial({color: 0xb8c4d8, metalness: 0.85, roughness: 0.25});
+  const disc = new THREE.Mesh(G('ufoD', () => new THREE.SphereGeometry(5, 32, 12)), hull); disc.scale.y = 0.24; disc.castShadow = true; g.add(disc);
+  const dome = new THREE.Mesh(G('ufoT', () => new THREE.SphereGeometry(2.2, 20, 12, 0, Math.PI * 2, 0, Math.PI / 2)), new THREE.MeshStandardMaterial({color: 0x7dff9a, emissive: 0x2a8a4a, emissiveIntensity: 0.8, transparent: true, opacity: 0.75, roughness: 0.1}));
+  dome.position.y = 0.7; g.add(dome);
+  const lights = [];
+  for (let k = 0; k < 10; k++) {
+    const a = k / 10 * Math.PI * 2;
+    const l = new THREE.Mesh(G('ufoL', () => new THREE.SphereGeometry(0.32, 8, 6)), new THREE.MeshBasicMaterial({color: NEON[k % 3]}));
+    l.position.set(Math.cos(a) * 4.6, -0.1, Math.sin(a) * 4.6); g.add(l); lights.push(l);
+  }
+  const beam = new THREE.Mesh(G('ufoB', () => { const c = new THREE.CylinderGeometry(1.4, 4.6, 1, 24, 1, true); c.translate(0, -0.5, 0); return c; }),
+    new THREE.MeshBasicMaterial({color: 0x9dffb8, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide}));
+  g.add(beam);
+  ufos.push({g, beam, lights, idx: i, amp: 4 + srand() * 5, ph: n * 1.9, h: 15 + srand() * 5, x: 0, z: 0});
+}
+function decorSpace() {
+  scatter(70, 900, WALL + 20, asteroid, 260);
+  for (const [n, i] of [40, 200, 340, 520, 640, 800, 920, 1080].entries()) ringGate(i, n);
+  for (const [n, i] of [120, 380, 560, 760, 1010].entries()) ufo(i, n);
+  billboard(90, 1, [['ОСТОРОЖНО: НЛО', 60], ['не стой под лучом... или стой', 28, '#7dff9a']], '#2a0f5e');
+  billboard(460, -1, [['КРИСТАЛЛЫ С ЛУНЫ', 54], ['чистота 99,1%', 34, '#bff1ff']], '#0b3a7a');
+  billboard(700, 1, [['ПОСЛЕДНЯЯ ЗАПРАВКА', 50], ['до самого Марса', 34, '#ffd23a']], '#5e0f4a');
+  billboard(990, -1, [['МЫ НЕ ОДНИ', 64], ['и они тоже едут', 34, '#ff4fb0']], '#141a3a');
+}
+function updateSpace(dt) {
+  spaceRoadTex.offset.y = -clockT * 0.6;
+  for (const s of spinners) { s.m.rotation.x += s.sx * dt; s.m.rotation.y += s.sy * dt; s.m.position.y = s.y + Math.sin(clockT * 0.4 + s.ph) * 3; }
+  for (const g of gates) g.mat.emissiveIntensity = 0.8 + 0.7 * Math.max(0, Math.sin(clockT * 3 - g.ph));
+  for (const u of ufos) {
+    const i = u.idx, lat = Math.sin(clockT * 0.55 + u.ph) * u.amp;
+    u.x = P[i].x + NR[i].x * lat; u.z = P[i].z + NR[i].z * lat;
+    const y = u.h + Math.sin(clockT * 1.7 + u.ph) * 0.8;
+    u.g.position.set(u.x, y, u.z); u.g.rotation.y += dt * 1.4;
+    u.g.rotation.z = Math.cos(clockT * 0.55 + u.ph) * 0.12;
+    u.beam.scale.y = y; u.beam.material.opacity = 0.16 + 0.1 * Math.sin(clockT * 9 + u.ph);
+    u.lights.forEach((l, k) => l.visible = ((clockT * 8 | 0) + k) % 3 !== 0);
+    // луч притягивает: подбрасывает и даёт мини-турбо
+    if (state !== 'race' && state !== 'post') continue;
+    for (const k of karts) {
+      if (k.beamT > 0 || k.hopY > 0) continue;
+      const dx = k.pos.x - u.x, dz = k.pos.z - u.z;
+      if (dx * dx + dz * dz < 4.4 * 4.4) {
+        k.hopV = 15; k.beamT = 2; k.boostT = Math.max(k.boostT, 0.6);
+        sparks.burst(k.pos.x, 1, k.pos.z, 24, 0x9dffb8, 8, 0.7, -4);
+        if (k.isPlayer) { SFX.beam(); shake = Math.max(shake, 0.12); }
+      }
+    }
+  }
+}
+function nearestUfo() {
+  if (!player || !ufos.length) return Infinity;
+  let d = Infinity;
+  for (const u of ufos) d = Math.min(d, Math.hypot(player.pos.x - u.x, player.pos.z - u.z));
+  return d;
+}
+
 function buildBoxes() {
   boxes = [];
   for (const i of BOX_ROWS) for (const l of [-8, -4, 0, 4, 8]) {
@@ -616,21 +771,35 @@ function buildWorld(id) {
   }
   world = new THREE.Group(); scene.add(world);
   computeTrack(MAP);
+  const S = !!MAP.space;
+  ufos = []; spinners = []; gates = [];
   scene.fog.color.setHex(MAP.fog); scene.background.setHex(MAP.fog);
+  scene.fog.near = MAP.fogNear || 220; scene.fog.far = MAP.fogFar || 1300;
+  ground.visible = !S; spaceSky.visible = S;
+  sunDisc.material.color.setHex(MAP.sunDisc || 0xfff6d8);
   sky.material.uniforms.top.value.setHex(MAP.skyTop); sky.material.uniforms.mid.value.setHex(MAP.skyMid); sky.material.uniforms.bot.value.setHex(MAP.fog);
   sun.color.setHex(MAP.sun); hemi.color.setHex(MAP.hemi[0]); hemi.groundColor.setHex(MAP.hemi[1]);
   ground.material.map = mapSandTex(MAP); ground.material.needsUpdate = true;
-  document.body.classList.toggle('mexico-filter', !!MAP.filter);
-  ribbon(-HALF, HALF, 0.03, 0, 20, roadMat);
-  ribbon(-HALF - 1.8, -HALF + 0.2, 0.05, 0, 5, curbMat);
-  ribbon(HALF - 0.2, HALF + 1.8, 0.05, 0, 5, curbMat);
-  ribbon(-WALL, 0, 0, 1.3, 6, mapWallMat(MAP), true);
-  ribbon(WALL, 0, 0, 1.3, 6, mapWallMat(MAP), true);
+  document.body.classList.toggle('mexico-filter', MAP.filter === 'mexico');
+  document.body.classList.toggle('space-filter', MAP.filter === 'space');
+  ribbon(-HALF, HALF, 0.03, 0, 20, S ? spaceRoadMat : roadMat);
+  ribbon(-HALF - 1.8, -HALF + 0.2, 0.05, 0, 5, S ? spaceCurbMat : curbMat);
+  ribbon(HALF - 0.2, HALF + 1.8, 0.05, 0, 5, S ? spaceCurbMat : curbMat);
+  const wm = S ? spaceWallMat : mapWallMat(MAP);
+  ribbon(-WALL, 0, 0, S ? 2.2 : 1.3, 6, wm, true);
+  ribbon(WALL, 0, 0, S ? 2.2 : 1.3, 6, wm, true);
+  if (S) {
+    // в космосе нет земли: стеклянные обочины до бортов и светящиеся «шторки» под трассой
+    ribbon(-WALL, -HALF - 1.6, 0.02, 0, 8, spaceShoulderMat);
+    ribbon(HALF + 1.6, WALL, 0.02, 0, 8, spaceShoulderMat);
+    ribbon(-WALL, 0, -18, 0, 6, spaceCurtainMat, true);
+    ribbon(WALL, 0, -18, 0, 6, spaceCurtainMat, true);
+  }
   buildStartArch();
-  if (mapId === 'mexico') decorMexico(); else decorDesert();
+  if (mapId === 'mexico') decorMexico(); else if (S) decorSpace(); else decorDesert();
   buildBoxes();
   tumbleweeds = [];
-  for (let i = 0; i < 9; i++) {
+  for (let i = 0; i < (S ? 0 : 9); i++) {
     const m = new THREE.Mesh(G('tw', () => new THREE.IcosahedronGeometry(1.3, 1)), M(0x9a7040, {wireframe: true}));
     m.position.set(lerp(AREA.x0, AREA.x1, srand()), 1.3, lerp(AREA.z0 + 200, AREA.z1 - 200, srand())); world.add(m);
     tumbleweeds.push({m, vx: rand(4, 9), vz: rand(-3, 3)});
@@ -889,7 +1058,63 @@ function initAudio() {
     engOsc.connect(engFilt); engFilt.connect(engGain); engGain.connect(sfxGain); engOsc.start();
     noiseBuf = actx.createBuffer(1, actx.sampleRate, actx.sampleRate);
     const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    initAlien();
   } catch (e) { actx = null; }
+}
+
+// ---- «пришельцы как в старом кино»: терменвокс + гул летающей тарелки ----
+let alien = null;
+function initAlien() {
+  const lfo = (f, depth, target) => { const o = actx.createOscillator(), g = actx.createGain(); o.frequency.value = f; g.gain.value = depth; o.connect(g); g.connect(target); o.start(); return {o, g}; };
+  // терменвокс: чистый синус, глубокое вибрато, портаменто между нотами, эхо
+  const th = actx.createOscillator(); th.type = 'sine'; th.frequency.value = 520;
+  const thVib = lfo(6.2, 14, th.frequency);
+  const thGain = actx.createGain(); thGain.gain.value = 0;
+  const echo = actx.createDelay(1); echo.delayTime.value = 0.34;
+  const fb = actx.createGain(); fb.gain.value = 0.38;
+  th.connect(thGain); thGain.connect(sfxGain); thGain.connect(echo); echo.connect(fb); fb.connect(echo); echo.connect(sfxGain);
+  th.start();
+  // тарелка: две расстроенные синусоиды (биения) + медленный «вуу-иии» по высоте + быстрая пульсация громкости
+  const s1 = actx.createOscillator(), s2 = actx.createOscillator(); s1.type = 'sine'; s2.type = 'triangle';
+  s1.frequency.value = 190; s2.frequency.value = 193.5;
+  lfo(0.45, 70, s1.frequency); lfo(0.45, 72, s2.frequency);
+  const pulse = actx.createGain(); pulse.gain.value = 0.5; lfo(9, 0.5, pulse.gain);
+  const sGain = actx.createGain(); sGain.gain.value = 0;
+  s1.connect(pulse); s2.connect(pulse); pulse.connect(sGain); sGain.connect(sfxGain); sGain.connect(echo);
+  s1.start(); s2.start();
+  alien = {th, thVib, thGain, sGain, phraseT: 2, noteT: 0, on: false};
+}
+const THEREMIN = [392, 440, 466, 554, 587, 698, 740, 880, 932, 1109]; // целотон+хроматика = «жутко»
+function alienAudio(dt, active) {
+  if (!alien) return;
+  const t = actx.currentTime, a = alien;
+  if (!active || muted) {
+    a.thGain.gain.setTargetAtTime(0, t, 0.15); a.sGain.gain.setTargetAtTime(0, t, 0.15);
+    return;
+  }
+  // фразы терменвокса: 3–7 с поёт, 3–8 с молчит
+  a.phraseT -= dt;
+  if (a.phraseT <= 0) { a.on = !a.on; a.phraseT = a.on ? rand(3, 7) : rand(3, 8); }
+  a.thGain.gain.setTargetAtTime(a.on ? 0.085 : 0, t, a.on ? 0.4 : 0.6);
+  a.noteT -= dt;
+  if (a.on && a.noteT <= 0) {
+    a.noteT = rand(0.35, 1.3);
+    const f = THEREMIN[Math.floor(Math.random() * THEREMIN.length)] * (Math.random() < 0.25 ? 0.5 : 1);
+    a.th.frequency.setTargetAtTime(f, t, rand(0.08, 0.3));     // скольжение между нотами
+    a.thVib.g.gain.setTargetAtTime(f * 0.028, t, 0.2);          // вибрато пропорционально высоте
+  }
+  // гул тарелки громче, когда она рядом
+  const d = nearestUfo();
+  a.sGain.gain.setTargetAtTime(d < 160 ? 0.11 * Math.pow(1 - d / 160, 1.5) : 0, t, 0.1);
+}
+// «лучевая пушка»: синус с быстрым вибрато и скольжением
+function rayGun(f1, f2, dur, vol = 0.12, wob = 22) {
+  if (!actx || muted) return;
+  const t = actx.currentTime, o = actx.createOscillator(), g = actx.createGain(), l = actx.createOscillator(), lg = actx.createGain();
+  o.type = 'sine'; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  l.frequency.value = wob; lg.gain.value = Math.max(f1, f2) * 0.12; l.connect(lg); lg.connect(o.frequency);
+  g.gain.setValueAtTime(0.001, t); g.gain.exponentialRampToValueAtTime(vol, t + 0.03); g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+  o.connect(g); g.connect(sfxGain); o.start(t); l.start(t); o.stop(t + dur + 0.05); l.stop(t + dur + 0.05);
 }
 function tone(f, dur, type = 'square', vol = 0.12, f2 = null, delay = 0) {
   if (!actx || muted) return;
@@ -913,13 +1138,15 @@ const SFX = {
   mini: () => tone(300, .3, 'sawtooth', .08, 800),
   hit: () => { noise(.35, .3, 900); tone(320, .45, 'square', .1, 60); },
   bump: () => noise(.12, .18, 500),
-  throw: () => tone(520, .18, 'triangle', .14, 180),
+  throw: () => MAP.space ? SFX.zap() : tone(520, .18, 'triangle', .14, 180),
   drop: () => tone(200, .14, 'triangle', .16, 90),
   storm: () => { noise(.9, .25, 600); tone(140, .9, 'sawtooth', .12, 40); },
   beep: () => tone(440, .28, 'square', .1),
   go: () => tone(880, .6, 'square', .12),
   lap: () => { [523, 659, 784].forEach((f, i) => tone(f, .14, 'square', .08, null, i * .1)); },
   fin: () => { [523, 659, 784, 1046].forEach((f, i) => tone(f, .22, 'square', .09, null, i * .14)); },
+  beam: () => { rayGun(180, 1500, 0.9, 0.13, 16); rayGun(240, 1900, 0.9, 0.06, 23); },
+  zap: () => rayGun(2200, 160, 0.4, 0.11, 30),
 };
 function setMuted(m) {
   muted = m; music.muted = m; if (sfxGain) sfxGain.gain.value = m ? 0 : 0.5;
@@ -963,7 +1190,7 @@ function resetRace() {
       boostT: 0, drifting: false, driftDir: 0, driftCharge: 0, hopY: 0, hopV: 0, steerVis: 0, roll: 0,
       offroad: false, wallHit: false, rb: 1, skill: k.isPlayer ? 1 : skills[s % skills.length],
       lane: lat, laneTarget: lat, laneT: rand(1, 3), aiItemT: 0, aiDrifty: k.isPlayer || Math.random() < 0.7,
-      smokeT: 0, wrongT: 0, gasAt: -1, lapStart: 0, bestLap: Infinity, seekBox: -1, bumpT: 0,
+      smokeT: 0, beamT: 0, wrongT: 0, gasAt: -1, lapStart: 0, bestLap: Infinity, seekBox: -1, bumpT: 0,
     });
     k.body.rotation.set(0, 0, 0); k.body.position.y = 0; k.flame.visible = false;
     updateVisual(k, 0);
@@ -1040,6 +1267,7 @@ function endDrift(k) {
 function physics(k, c, dt) {
   const s = k.stats;
   if (k.rollT > 0) { k.rollT -= dt; if (k.rollT <= 0) giveItem(k); }
+  if (k.beamT > 0) k.beamT -= dt;
   if (k.spinT > 0) {
     k.spinT -= dt; k.spinAngle += dt * 13; c = NOCTRL; k.speed *= Math.pow(0.25, dt);
     if (k.spinT <= 0) k.body.rotation.y = wrapA(k.body.rotation.y);
@@ -1310,7 +1538,7 @@ function updateVisual(k, dt) {
     }
   }
   if (k.boostT > 0) { const [x, y, z] = wpt(k, k.exhaust[0], k.exhaust[1], k.exhaust[2] - 0.8); sparks.emit(x, y, z, rand(-1, 1), rand(0, 1), rand(-1, 1), k.boostT > 0.6 ? 0x4fc3ff : 0xff7a1a, 0.3, 0); }
-  if (k.offroad && Math.abs(k.speed) > 10 && Math.random() < 0.5) { const [x, , z] = wpt(k, rand(-1, 1) * k.rear[0], 0, k.rear[1]); dust.emit(x, 0.4, z, rand(-2, 2), rand(1, 3), rand(-2, 2), 0xd9b07a, 0.8, -0.5); }
+  if (k.offroad && Math.abs(k.speed) > 10 && Math.random() < 0.5) { const [x, , z] = wpt(k, rand(-1, 1) * k.rear[0], 0, k.rear[1]); dust.emit(x, 0.4, z, rand(-2, 2), rand(1, 3), rand(-2, 2), MAP.dust || 0xd9b07a, 0.8, -0.5); }
   if (k.c.kart === 'rv') { k.smokeT -= dt; if (k.smokeT <= 0) { k.smokeT = 0.12; const [x, y, z] = wpt(k, 0.9, 4.1, -2.4); dust.emit(x, y, z, rand(-0.5, 0.5), rand(2, 3.5), rand(-0.5, 0.5), 0xbfd8ea, 1.6, -0.6); } }
 }
 
@@ -1446,7 +1674,7 @@ function toMenu() {
 function togglePause() {
   if (state !== 'race' && state !== 'countdown' && state !== 'post') return;
   paused = !paused; show('pause', paused);
-  if (paused) { music.pause(); if (engGain) engGain.gain.value = 0; } else if (!muted) music.play().catch(() => {});
+  if (paused) { music.pause(); if (engGain) engGain.gain.value = 0; alienAudio(0, false); } else if (!muted) music.play().catch(() => {});
 }
 function onPlayerFinish() {
   state = 'post'; postT = 0; SFX.fin();
@@ -1473,6 +1701,8 @@ function step(dt) {
   clockT += dt;
   sparks.update(dt); dust.update(dt);
   updateBoxes(dt);
+  if (MAP.space) updateSpace(dt);
+  alienAudio(dt, !!MAP.space);
   for (const t of tumbleweeds) {
     t.m.position.x += t.vx * dt; t.m.position.z += t.vz * dt; t.m.rotation.z -= t.vx * dt / 1.3; t.m.rotation.x += t.vz * dt / 1.3;
     t.m.position.y = 1.3 + Math.abs(Math.sin(clockT * 3 + t.vx)) * 0.8;
